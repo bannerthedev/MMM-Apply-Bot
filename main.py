@@ -3,9 +3,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from discord.ui import View, Select, Button
+import os 
+import dotenv
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Direct config values (no os.environ.get)
-BOT_TOKEN = "MTUwOTY3MDUxODIzMDYxNDI0Ng.Gd-GL6.g0W6RtYyeyfMh2VSm6N2DpyjbnY5PFiZD4JCZs"
 APPLICATION_CHANNEL_ID = 1361085463317971094
 GUILD_IDS = 1338455645896310784
 
@@ -249,4 +253,4 @@ async def on_ready():
     except Exception as e:
         print("Failed to register command:", e)
 
-bot.run(BOT_TOKEN)
+bot.run(os.getenv("BOT_TOKEN"))
