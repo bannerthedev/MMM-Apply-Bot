@@ -86,7 +86,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         return
 
     # collect text answer (required)
-    async def collect_text(question: str) -> str:
+    async def collect_text(question: str):
         await dm.send(question)
 
         def check(m: discord.Message):
@@ -94,17 +94,18 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
         try:
             msg = await bot.wait_for('message', timeout=300.0, check=check)
-            content = msg.content.strip()
-            if not content:
-                await dm.send("Response cannot be empty. Please re-run /register.")
-                raise asyncio.TimeoutError()
-            return content
         except asyncio.TimeoutError:
             await dm.send("Timed out. Please re-run /register to start again.")
-            raise
+            return None
+
+        content = msg.content.strip()
+        if not content:
+            await dm.send("Response cannot be empty. Please re-run /register.")
+            return None
+        return content
 
     # yes/no via select
-    async def ask_yes_no(question: str) -> str:
+    async def ask_yes_no(question: str):
         class YesNoView(View):
             def __init__(self):
                 super().__init__(timeout=300)
@@ -130,11 +131,17 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                 self.stop()
 
         view = YesNoView()
-        await dm.send(question, view=view)
+        msg = await dm.send(question, view=view)
         await view.wait()
+
         if view.value is None:
-            await dm.send("Timed out. Please re-run /register to start again.")
-            raise asyncio.TimeoutError()
+            # view timed out
+            try:
+                await msg.edit(content="Timed out. Please re-run /register to start again.", view=None)
+            except discord.HTTPException:
+                pass
+            return None
+
         return view.value
 
     answers = {}
@@ -142,38 +149,89 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
     # questions (no outer try here; each helper handles its own timeout)
     if app_type == "caster":
         answers["1"] = await collect_text("1/10. What is your Discord username & ID?")
+        if answers["1"] is None: return
+
         answers["2"] = await ask_yes_no("2/10. Do you have a mic?")
+        if answers["2"] is None: return
+
         answers["3"] = await collect_text("3/10. Do you have any past experience with casting in Gorilla Tag? If so please explain.")
+        if answers["3"] is None: return
+
         answers["4"] = await collect_text("4/10. Why do you want to become a Caster for MMM?")
+        if answers["4"] is None: return
+
         answers["5"] = await collect_text("5/10. What is your Upload & Download Speed? (use https://www.speedtest.net/)")
+        if answers["5"] is None: return
+
         answers["6"] = await collect_text("6/10. List your PC specifications.")
+        if answers["6"] is None: return
+
         answers["7"] = await collect_text("7/10. If you have past casting experience, link your YouTube/Twitch/etc.")
+        if answers["7"] is None: return
+
         answers["8"] = await collect_text("8/10. Are you familiar with OBS?")
+        if answers["8"] is None: return
+
         answers["9"] = await collect_text(
             "9/10. Please send a video showing OBS tasks (make Game Capture, add mic, import/export profile, make scene). "
             "Upload via Drive/MediaFire and send link."
         )
+        if answers["9"] is None: return
+
         answers["10"] = await collect_text("10/10. Any questions?")
+        if answers["10"] is None: return
 
     elif app_type == "ref":
         answers["1"] = await collect_text("1/11. What is your Discord username & ID?")
+        if answers["1"] is None: return
+
         answers["2"] = await collect_text("2/11. Name 3 official scrims you have reffed for (include teams and score).")
+        if answers["2"] is None: return
+
         answers["3"] = await collect_text("3/11. What is the recommended minimum time a ref should give late players?")
+        if answers["3"] is None: return
+
         answers["4"] = await collect_text("4/11. How long do runners have before taggers can pursue them?")
+        if answers["4"] is None: return
+
         answers["5"] = await collect_text("5/11. Where do runners go when tagged by the opposing team?")
+        if answers["5"] is None: return
+
         answers["6"] = await collect_text("6/11. What headsets are allowed in MMM official scrims?")
+        if answers["6"] is None: return
+
         answers["7"] = await collect_text("7/11. Can teams have different colors than teammates? If not, why?")
+        if answers["7"] is None: return
+
         answers["8"] = await collect_text("8/11. Do players have team abbreviation in their name while playing? If not, why?")
+        if answers["8"] is None: return
+
         answers["9"] = await ask_yes_no("9/11. Do you understand that if you don't ref at least 3-5 matches per season you may be removed/demoted?")
+        if answers["9"] is None: return
+
         answers["10"] = await ask_yes_no("10/11. Do you understand that bias may result in removal and potential server punishment?")
+        if answers["10"] is None: return
+
         answers["11"] = await ask_yes_no("11/11. Do you understand you must follow Head Referee instructions at all times?")
+        if answers["11"] is None: return
 
     elif app_type == "commentator":
         answers["1"] = await collect_text("1/5. What is your Discord username?")
+        if answers["1"] is None: return
+
         answers["2"] = await collect_text("2/5. Do you know in-game callouts and the league rules? Explain.")
+        if answers["2"] is None: return
+
         answers["3"] = await collect_text("3/5. Do you have experience commentating? If so, list the discords you worked for.")
+        if answers["3"] is None: return
+
         answers["4"] = await collect_text("4/5. Why should you be a commentator? Provide thorough reasoning.")
+        if answers["4"] is None: return
+
         answers["5"] = await collect_text("5/5. If you use a PC, what microphone do you use?")
+        if answers["5"] is None: return
+
+    # (keep the rest of your code: confirmation DM, embed build, StaffDecisionView, send to channel)
 
     # Confirmation to user
     await dm.send("Application submitted.\nYour application has been submitted.")
