@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Direct config values (no os.environ.get)
-APPLICATION_CHANNEL_ID = 1361085463317971094
+APPLICATION_CHANNEL_ID = 1509686940512030870
 GUILD_IDS = 1338455645896310784
 
 # Role IDs to give on acceptance (set these to your actual role IDs)
