@@ -19,6 +19,9 @@ CASTER_ROLE_ID = 1338478126354923530
 REF_ROLE_ID = 1356887381156036688
 COMMENTATOR_ROLE_ID = 1346047919874248748
 HELPER_ROLE_ID = 1505268458135486544  # <--- SET THIS to your helper role ID
+# add near top with other IDs
+LEAGUE_MANAGER_BOT_ID = 999999999999999999  # <<< set to MMM League Manager's user ID
+
 
 # Staff roles (any of these means "staff", and blocks team apps)
 STAFF_ROLE_IDS = [
@@ -366,7 +369,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             except:
                 pass
 
-            # For team apps, send a /create-team command to the transactions bot channel
+            # For team apps, notify MMM League Manager in the transactions channel
             if self.app_type == "team":
                 try:
                     chan = bot.get_channel(TRANSACTIONS_CHANNEL_ID) or await bot.fetch_channel(TRANSACTIONS_CHANNEL_ID)
@@ -378,7 +381,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                     if len(color) != 6:
                         try:
                             await interaction2.followup.send(
-                                f"Did not send /create-team: hex color `{raw_color}` is not 6 characters.",
+                                f"Did not send team creation message: hex color `{raw_color}` is not 6 characters.",
                                 ephemeral=True
                             )
                         except:
@@ -386,9 +389,20 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                         return
 
                     captain_mention = f"<@{self.target_user_id}>"
-                    # /create-team team_name captain color_code
-                    team_command = f'/create-team "{team_name}" {captain_mention} {color}'
-                    await chan.send(team_command)
+                    mmm_manager_mention = f"<@{LEAGUE_MANAGER_BOT_ID}>"
+
+                    # Human+bot friendly message
+                    content = (
+                        f"{mmm_manager_mention}\n"
+                        f"Team application **accepted** by {interaction2.user.mention}.\n"
+                        f"Requested by: {captain_mention}\n"
+                        f"Team name: **{team_name}**\n"
+                        f"Color code: `#{color}`\n\n"
+                        f"Suggested command:\n"
+                        f"`/create-team \"{team_name}\" {captain_mention} {color}`"
+                    )
+
+                    await chan.send(content)
                 except:
                     pass
 
