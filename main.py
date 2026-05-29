@@ -3,26 +3,40 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select, Button
 import os
-import dotenv
 from dotenv import load_dotenv
 
 load_dotenv()
-
 
 # ================== CONFIG ==================
 GUILD_IDS = 1338455645896310784       # main guild where commands live
 APPLICATION_CHANNEL_ID = 1509686940512030870  # channel where apps are posted
 
+# Channel where the transactions bot listens for team creation commands
+TRANSACTIONS_CHANNEL_ID = 1506741709445271766  # <--- SET THIS
+
 # Role IDs to give on acceptance
 CASTER_ROLE_ID = 1338478126354923530
 REF_ROLE_ID = 1356887381156036688
 COMMENTATOR_ROLE_ID = 1346047919874248748
+HELPER_ROLE_ID = 1505268458135486544  # <--- SET THIS to your helper role ID
+
+# Staff roles (any of these means "staff", and blocks team apps)
+STAFF_ROLE_IDS = [
+    1351639240861028447,  # <--- replace with real staff role IDs
+    1339202997208616990,
+    1353119096211898450,
+    1472041769049784330,
+    1338475990833303677,
+    1374305296326856734,
+]
 
 # App open/closed status (True = open, False = closed)
 APP_STATUS = {
     "caster": True,
     "ref": True,
     "commentator": True,
+    "staff": True,
+    "team": True,
 }
 # ============================================
 
@@ -47,15 +61,30 @@ class RegisterTypeSelect(Select):
         options = [
             discord.SelectOption(label="Caster", value="caster", description="Apply to be a caster"),
             discord.SelectOption(label="Referee", value="ref", description="Apply to be a referee"),
-            discord.SelectOption(label="Commentator", value="commentator", description="Apply to be a commentator")
+            discord.SelectOption(label="Commentator", value="commentator", description="Apply to be a commentator"),
+            discord.SelectOption(label="Staff", value="staff", description="Apply to be staff"),
+            discord.SelectOption(label="Team", value="team", description="Apply as a team"),
         ]
-        super().__init__(placeholder="Choose application type",
-                         min_values=1, max_values=1,
-                         options=options,
-                         custom_id="register_select")
+        super().__init__(
+            placeholder="Choose application type",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="register_select",
+        )
 
     async def callback(self, interaction: discord.Interaction):
-        app_type = self.values[0]  # "caster" / "ref" / "commentator"
+        app_type = self.values[0]  # "caster" / "ref" / "commentator" / "staff" / "team"
+
+        # Block team apps for anyone with any staff role
+        if app_type == "team" and isinstance(interaction.user, discord.Member):
+            user_role_ids = {r.id for r in interaction.user.roles}
+            if any(staff_id in user_role_ids for staff_id in STAFF_ROLE_IDS):
+                await interaction.response.send_message(
+                    "You already have a staff role and cannot apply for a team.",
+                    ephemeral=True
+                )
+                return
 
         # check open/closed
         if not APP_STATUS.get(app_type, True):
@@ -146,7 +175,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
     answers = {}
 
-    # questions (no outer try here; each helper handles its own timeout)
+    # questions
     if app_type == "caster":
         answers["1"] = await collect_text("1/10. What is your Discord username & ID?")
         if answers["1"] is None: return
@@ -231,7 +260,37 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         answers["5"] = await collect_text("5/5. If you use a PC, what microphone do you use?")
         if answers["5"] is None: return
 
-    # (keep the rest of your code: confirmation DM, embed build, StaffDecisionView, send to channel)
+    elif app_type == "staff":
+        answers["1"] = await collect_text("1/4. What is your Username and ID.")
+        if answers["1"] is None: return
+
+        answers["2"] = await collect_text("2/4. What is your age.")
+        if answers["2"] is None: return
+
+        answers["3"] = await collect_text(
+            "3/4. Do you have experience being a moderator for a league? "
+            "If yes, please list the league and when you served."
+        )
+        if answers["3"] is None: return
+
+        answers["4"] = await collect_text("4/4. Why should we accept you.")
+        if answers["4"] is None: return
+
+    elif app_type == "team":
+        answers["1"] = await collect_text("1/5. Team name and abbreviation")
+        if answers["1"] is None: return
+
+        answers["2"] = await collect_text("2/5. Hex color code")
+        if answers["2"] is None: return
+
+        answers["3"] = await collect_text("3/5. Roster")
+        if answers["3"] is None: return
+
+        answers["4"] = await collect_text("4/5. Server (if private do not type)")
+        if answers["4"] is None: return
+
+        answers["5"] = await ask_yes_no("5/5. yk if you are accepted you need to make a ticket and send your pfp")
+        if answers["5"] is None: return
 
     # Confirmation to user
     await dm.send("Application submitted.\nYour application has been submitted.")
@@ -251,12 +310,13 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         )
     embed.set_footer(text=f"User ID: {user.id}")
 
-    # Staff view (with role-assign on accept)
+    # Staff view (with role-assign on accept, and team command for team apps)
     class StaffDecisionView(View):
-        def __init__(self, target_user_id: int, app_type: str):
+        def __init__(self, target_user_id: int, app_type: str, answers_dict: dict):
             super().__init__(timeout=None)
             self.target_user_id = target_user_id
             self.app_type = app_type
+            self.answers = answers_dict  # store answers so we can use them on accept
 
         @discord.ui.button(label="Accept", style=discord.ButtonStyle.green, custom_id="app_accept")
         async def accept(self, interaction2: discord.Interaction, button: Button):
@@ -278,7 +338,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             except:
                 pass
 
-            # give role
+            # give role (only for some types)
             try:
                 guild = interaction2.guild or (await bot.fetch_guild(GUILD_IDS) if isinstance(GUILD_IDS, int) else None)
                 if guild:
@@ -289,6 +349,9 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                         role_id = REF_ROLE_ID
                     elif self.app_type == "commentator":
                         role_id = COMMENTATOR_ROLE_ID
+                    elif self.app_type == "staff":
+                        role_id = HELPER_ROLE_ID
+                    # team: no automatic role
 
                     if role_id:
                         role = guild.get_role(role_id) or await guild.fetch_role(role_id)
@@ -302,6 +365,21 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                                 pass
             except:
                 pass
+
+            # For team apps, send a command to the transactions bot channel
+            if self.app_type == "team":
+                try:
+                    chan = bot.get_channel(TRANSACTIONS_CHANNEL_ID) or await bot.fetch_channel(TRANSACTIONS_CHANNEL_ID)
+                    # You MUST edit this command format to match what your transactions bot expects.
+                    team_name = self.answers.get("1", "Unknown Team")
+                    color = self.answers.get("2", "N/A")
+                    roster = self.answers.get("3", "N/A")
+                    server = self.answers.get("4", "N/A")
+
+                    team_command = f"!createteam \"{team_name}\" {color} | Roster: {roster} | Server: {server}"
+                    await chan.send(team_command)
+                except:
+                    pass
 
         @discord.ui.button(label="Deny", style=discord.ButtonStyle.red, custom_id="app_deny")
         async def deny(self, interaction2: discord.Interaction, button: Button):
@@ -324,7 +402,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
     # send to review channel
     try:
         app_channel = bot.get_channel(APPLICATION_CHANNEL_ID) or await bot.fetch_channel(APPLICATION_CHANNEL_ID)
-        view = StaffDecisionView(user.id, app_type)
+        view = StaffDecisionView(user.id, app_type, answers)
         await app_channel.send(embed=embed, view=view)
         await dm.send("Your application has been sent to staff.")
     except Exception:
@@ -346,7 +424,7 @@ async def on_ready():
         elif isinstance(GUILD_IDS, (list, tuple)) and len(GUILD_IDS) > 0:
             guild_obj = discord.Object(id=GUILD_IDS[0])
 
-        @tree.command(name="register", description="Start an application (Caster / Ref / Commentator)", guild=guild_obj)
+        @tree.command(name="register", description="Start an application (Caster / Ref / Commentator / Staff / Team)", guild=guild_obj)
         async def register_command(interaction: discord.Interaction):
             view = RegisterSelect()
             await interaction.response.send_message("Select application type:", view=view, ephemeral=True)
@@ -363,10 +441,15 @@ async def on_ready():
                         discord.SelectOption(label="Caster", value="caster", description="Manage Caster applications"),
                         discord.SelectOption(label="Referee", value="ref", description="Manage Referee applications"),
                         discord.SelectOption(label="Commentator", value="commentator", description="Manage Commentator applications"),
+                        discord.SelectOption(label="Staff", value="staff", description="Manage Staff applications"),
+                        discord.SelectOption(label="Team", value="team", description="Manage Team applications"),
                     ]
-                    super().__init__(placeholder="Choose which application to manage",
-                                     min_values=1, max_values=1,
-                                     options=options)
+                    super().__init__(
+                        placeholder="Choose which application to manage",
+                        min_values=1,
+                        max_values=1,
+                        options=options
+                    )
 
                 async def callback(self, select_interaction: discord.Interaction):
                     if select_interaction.user.id != interaction.user.id:
