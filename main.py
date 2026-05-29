@@ -339,4 +339,4 @@ async def on_ready():
     except Exception as e:
         print("Failed to register command:", e)
 
-bot.run(BOT_TOKEN)
+bot.run(os.getenv("BOT_TOKEN"))
