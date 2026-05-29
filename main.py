@@ -3,9 +3,10 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Select, Button
 from pathlib import Path
-import os 
+import os
 import dotenv
 from dotenv import load_dotenv
+from discord import app_commands
 
 load_dotenv()
 
@@ -18,10 +19,10 @@ TRANSACTIONS_CHANNEL_ID = 1506741709445271766
 CASTER_ROLE_ID = 1338478126354923530
 REF_ROLE_ID = 1356887381156036688
 COMMENTATOR_ROLE_ID = 1346047919874248748
-HELPER_ROLE_ID = 123456789012345678  # helper/staff role for staff apps
+HELPER_ROLE_ID = 1505268458135486544  # helper/staff role for staff apps
 
-# Any roles in this list count as "staff" and block team apps
-STAFF_ROLE_IDS = [111111111111111111, 222222222222222222]
+# Single staff role ID that blocks team apps (if used)
+STAFF_ROLE_ID = 111111111111111111  # <-- replace with your actual staff role ID if needed
 
 # App open/closed status
 APP_STATUS = {
@@ -60,10 +61,9 @@ class RegisterTypeSelect(Select):
 
     async def callback(self, interaction: discord.Interaction):
         app_type = self.values[0]
-        # Block team apps for anyone with any staff role
+        # Block team apps for anyone with the staff role
         if app_type == "team" and isinstance(interaction.user, discord.Member):
-            user_role_ids = {r.id for r in interaction.user.roles}
-            if any(rid in user_role_ids for rid in STAFF_ROLE_IDS):
+            if any(r.id == STAFF_ROLE_ID for r in interaction.user.roles):
                 await interaction.response.send_message("You already have a staff role and cannot apply for a team.", ephemeral=True)
                 return
         # check open/closed
@@ -229,7 +229,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         @discord.ui.button(label="Accept", style=discord.ButtonStyle.green, custom_id="app_accept")
         async def accept(self, interaction2: discord.Interaction, button: Button):
             staff_member = interaction2.user
-            if not isinstance(staff_member, discord.Member) or not staff_member.guild_permissions.manage_guild:
+            if not isinstance(staff_member, discord.Member) or not staff_member.guild_permissions.administrator:
                 await interaction2.response.send_message("You don't have permission to use this.", ephemeral=True)
                 return
 
@@ -299,7 +299,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         @discord.ui.button(label="Deny", style=discord.ButtonStyle.red, custom_id="app_deny")
         async def deny(self, interaction2: discord.Interaction, button: Button):
             staff_member = interaction2.user
-            if not isinstance(staff_member, discord.Member) or not staff_member.guild_permissions.manage_guild:
+            if not isinstance(staff_member, discord.Member) or not staff_member.guild_permissions.administrator:
                 await interaction2.response.send_message("You don't have permission to use this.", ephemeral=True)
                 return
             await interaction2.response.edit_message(content=f"Application denied by {staff_member.display_name}.", embed=interaction2.message.embeds[0], view=None)
@@ -332,11 +332,37 @@ async def on_ready():
             view = RegisterSelect()
             await interaction.response.send_message("Select application type:", view=view, ephemeral=True)
 
+        @tree.command(name="manage", description="Open or close an application type", guild=guild_obj)
+        @app_commands.describe(action="open or close", app="application type to manage")
+        @app_commands.choices(action=[
+            app_commands.Choice(name="open", value="open"),
+            app_commands.Choice(name="close", value="close"),
+        ], app=[
+            app_commands.Choice(name="caster", value="caster"),
+            app_commands.Choice(name="ref", value="ref"),
+            app_commands.Choice(name="commentator", value="commentator"),
+            app_commands.Choice(name="staff", value="staff"),
+            app_commands.Choice(name="team", value="team"),
+        ])
+        async def manage_command(interaction: discord.Interaction, action: app_commands.Choice[str], app: app_commands.Choice[str]):
+            member = interaction.user
+            if not isinstance(member, discord.Member) or not member.guild_permissions.administrator:
+                await interaction.response.send_message("You must be an administrator to use this command.", ephemeral=True)
+                return
+
+            app_key = app.value
+            if action.value == "close":
+                APP_STATUS[app_key] = False
+                await interaction.response.send_message(f"{app_key.capitalize()} application closed.\n\nThis app has been closed by a admin", ephemeral=True)
+            else:
+                APP_STATUS[app_key] = True
+                await interaction.response.send_message(f"{app_key.capitalize()} application opened.", ephemeral=True)
+
         if guild_obj:
             await tree.sync(guild=guild_obj)
         else:
             await tree.sync()
-        print("Slash command registered.")
+        print("Slash commands registered.")
     except Exception as e:
         print("Failed to register command:", e)
 
