@@ -12,22 +12,18 @@ GUILD_IDS = 1338455645896310784       # main guild where commands live
 APPLICATION_CHANNEL_ID = 1509686940512030870  # channel where apps are posted
 
 # Channel where the transactions bot listens for team creation commands
-TRANSACTIONS_CHANNEL_ID = 1506741709445271766  # <--- SET THIS
+TRANSACTIONS_CHANNEL_ID = 123456789012345678  # <--- SET THIS
 
 # Role IDs to give on acceptance
 CASTER_ROLE_ID = 1338478126354923530
 REF_ROLE_ID = 1356887381156036688
 COMMENTATOR_ROLE_ID = 1346047919874248748
-HELPER_ROLE_ID = 1505268458135486544  # <--- SET THIS to your helper role ID
+HELPER_ROLE_ID = 123456789012345678  # <--- SET THIS to your helper role ID
 
 # Staff roles (any of these means "staff", and blocks team apps)
 STAFF_ROLE_IDS = [
-    1351639240861028447,  # <--- replace with real staff role IDs
-    1339202997208616990,
-    1353119096211898450,
-    1472041769049784330,
-    1338475990833303677,
-    1374305296326856734,
+    111111111111111111,  # <--- replace with real staff role IDs
+    222222222222222222,
 ]
 
 # App open/closed status (True = open, False = closed)
@@ -366,17 +362,27 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             except:
                 pass
 
-            # For team apps, send a command to the transactions bot channel
+            # For team apps, send a /create-team command to the transactions bot channel
             if self.app_type == "team":
                 try:
                     chan = bot.get_channel(TRANSACTIONS_CHANNEL_ID) or await bot.fetch_channel(TRANSACTIONS_CHANNEL_ID)
-                    # You MUST edit this command format to match what your transactions bot expects.
                     team_name = self.answers.get("1", "Unknown Team")
-                    color = self.answers.get("2", "N/A")
-                    roster = self.answers.get("3", "N/A")
-                    server = self.answers.get("4", "N/A")
+                    raw_color = self.answers.get("2", "").strip()
+                    color = raw_color.lstrip("#")
 
-                    team_command = f"!createteam \"{team_name}\" {color} | Roster: {roster} | Server: {server}"
+                    # hex must be exactly 6 characters
+                    if len(color) != 6:
+                        try:
+                            await interaction2.followup.send(
+                                f"Did not send /create-team: hex color `{raw_color}` is not 6 characters.",
+                                ephemeral=True
+                            )
+                        except:
+                            pass
+                        return
+
+                    # adjust this format if your transactions bot expects something different
+                    team_command = f"/create-team \"{team_name}\" {color}"
                     await chan.send(team_command)
                 except:
                     pass
