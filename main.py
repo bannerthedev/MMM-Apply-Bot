@@ -2,31 +2,26 @@ import asyncio
 import discord
 from discord.ext import commands
 from discord.ui import View, Select, Button
-import os
+from pathlib import Path
+import os 
+import dotenv
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ================ CONFIG =================
-GUILD_IDS = 1338455645896310784       # main guild where commands live
-APPLICATION_CHANNEL_ID = 1509686940512030870  # channel where apps are posted
-TRANSACTIONS_CHANNEL_ID = 1506741709445271766  # channel MMM League Manager listens in
+# ============== CONFIG ==============
+GUILD_IDS = 1338455645896310784
+APPLICATION_CHANNEL_ID = 1509686940512030870
+TRANSACTIONS_CHANNEL_ID = 1506741709445271766
 
 # Role IDs to give on acceptance
 CASTER_ROLE_ID = 1338478126354923530
 REF_ROLE_ID = 1356887381156036688
 COMMENTATOR_ROLE_ID = 1346047919874248748
-HELPER_ROLE_ID = 1505268458135486544  # set to your helper role ID
+HELPER_ROLE_ID = 123456789012345678  # helper/staff role for staff apps
 
-# Staff role IDs (if user has any of these, treat as staff and block team app)
-STAFF_ROLE_IDS = [
-    1351639240861028447,
-    1374305296326856734,
-    1339202997208616990,
-    1353119096211898450,
-    1472041769049784330,
-    1338475990833303677,
-]
+# Any roles in this list count as "staff" and block team apps
+STAFF_ROLE_IDS = [111111111111111111, 222222222222222222]
 
 # App open/closed status
 APP_STATUS = {
@@ -36,7 +31,7 @@ APP_STATUS = {
     "staff": True,
     "team": True,
 }
-# =========================================
+# ======================================
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -61,20 +56,17 @@ class RegisterTypeSelect(Select):
             discord.SelectOption(label="Staff", value="staff", description="Apply to be staff"),
             discord.SelectOption(label="Team", value="team", description="Apply as a team"),
         ]
-        super().__init__(
-            placeholder="Choose application type",
-            min_values=1, max_values=1,
-            options=options, custom_id="register_select"
-        )
+        super().__init__(placeholder="Choose application type", min_values=1, max_values=1, options=options, custom_id="register_select")
 
     async def callback(self, interaction: discord.Interaction):
         app_type = self.values[0]
-        # Block team apps for users with staff roles
+        # Block team apps for anyone with any staff role
         if app_type == "team" and isinstance(interaction.user, discord.Member):
             user_role_ids = {r.id for r in interaction.user.roles}
-            if any(sid in user_role_ids for sid in STAFF_ROLE_IDS):
+            if any(rid in user_role_ids for rid in STAFF_ROLE_IDS):
                 await interaction.response.send_message("You already have a staff role and cannot apply for a team.", ephemeral=True)
                 return
+        # check open/closed
         if not APP_STATUS.get(app_type, True):
             await interaction.response.send_message("This App has been closed by a admin", ephemeral=True)
             return
@@ -83,6 +75,7 @@ class RegisterTypeSelect(Select):
 
 # ---------- Application flow ----------
 async def start_application_flow(user: discord.User, app_type: str, interaction: discord.Interaction):
+    # DM intro
     try:
         dm = await user.create_dm()
         await dm.send("Application Started\nPlease answer the questions below, either by selecting menu options or by sending messages to the bot.")
@@ -112,7 +105,6 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             def __init__(self):
                 super().__init__(timeout=300)
                 self.value = None
-
             @discord.ui.select(placeholder="Select Yes or No", min_values=1, max_values=1, options=[
                 discord.SelectOption(label="Yes", value="yes"),
                 discord.SelectOption(label="No", value="no")
@@ -124,7 +116,6 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                 self.value = select.values[0]
                 await interaction2.response.edit_message(content=f"{question}\nAnswer: {self.value}", view=None)
                 self.stop()
-
         view = YesNoView()
         msg = await dm.send(question, view=view)
         await view.wait()
@@ -137,7 +128,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
     answers = {}
 
-    # QUESTIONS
+    # Questions per app_type (required check after each)
     if app_type == "caster":
         answers["1"] = await collect_text("1/10. What is your Discord username & ID?"); 
         if answers["1"] is None: return
@@ -197,9 +188,9 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         if answers["5"] is None: return
 
     elif app_type == "staff":
-        answers["1"] = await collect_text("1/4. What is your Username and ID."); 
+        answers["1"] = await collect_text("1/4. What Is Your Username And ID."); 
         if answers["1"] is None: return
-        answers["2"] = await collect_text("2/4. What is your age."); 
+        answers["2"] = await collect_text("2/4. What Is Your Age."); 
         if answers["2"] is None: return
         answers["3"] = await collect_text("3/4. Do you have experience being a moderator for a league? If yes, please list the league and when you served."); 
         if answers["3"] is None: return
@@ -275,7 +266,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                             except: pass
             except: pass
 
-            # TEAM: send only the /create-team line to transactions channel
+            # TEAM: send only the /create-team line to transactions channel, then delete it
             if self.app_type == "team":
                 try:
                     chan = bot.get_channel(TRANSACTIONS_CHANNEL_ID) or await bot.fetch_channel(TRANSACTIONS_CHANNEL_ID)
@@ -285,16 +276,25 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
                     if len(color) != 6 or any(c not in "0123456789abcdefABCDEF" for c in color):
                         try:
-                            await interaction2.followup.send(f"Did not send team creation: hex color `{raw_color}` is invalid (must be 6 hex digits).", ephemeral=True)
-                        except: pass
+                            await interaction2.followup.send(
+                                f"Did not send team creation: hex color `{raw_color}` is invalid (must be 6 hex digits).",
+                                ephemeral=True
+                            )
+                        except:
+                            pass
                         return
 
                     captain_mention = f"<@{self.target_user_id}>"
                     team_command = f'/create-team "{team_name}" {captain_mention} {color}'
 
-                    # send only the command line
-                    await chan.send(team_command)
-                except: pass
+                    # send only the command line and delete it after sending
+                    msg = await chan.send(team_command)
+                    try:
+                        await msg.delete()
+                    except:
+                        pass
+                except:
+                    pass
 
         @discord.ui.button(label="Deny", style=discord.ButtonStyle.red, custom_id="app_deny")
         async def deny(self, interaction2: discord.Interaction, button: Button):
@@ -306,7 +306,8 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             try:
                 u = await bot.fetch_user(self.target_user_id)
                 await u.send(f"Your application was denied by {staff_member.display_name}.")
-            except: pass
+            except:
+                pass
 
     # send to review channel
     try:
