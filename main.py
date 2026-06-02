@@ -1,30 +1,26 @@
 import asyncio
+import os
+from pathlib import Path
+import dotenv
+dotenv.load_dotenv()
+
 import discord
 from discord.ext import commands
 from discord.ui import View, Select, Button
-from pathlib import Path
-import os
-import dotenv
-from dotenv import load_dotenv
-from discord import app_commands
-
-load_dotenv()
+from discord import app_commands, TextChannel
 
 # ============== CONFIG ==============
 GUILD_IDS = 1338455645896310784
 APPLICATION_CHANNEL_ID = 1509686940512030870
 TRANSACTIONS_CHANNEL_ID = 1506741709445271766
 
-# Role IDs to give on acceptance
 CASTER_ROLE_ID = 1338478126354923530
 REF_ROLE_ID = 1356887381156036688
 COMMENTATOR_ROLE_ID = 1346047919874248748
-HELPER_ROLE_ID = 1505268458135486544  # helper/staff role for staff apps
+HELPER_ROLE_ID = 1505268458135486544
 
-# Single staff role ID that blocks team apps (if used)
-STAFF_ROLE_ID = 111111111111111111  # <-- replace with your actual staff role ID if needed
+STAFF_ROLE_ID = 111111111111111111
 
-# App open/closed status
 APP_STATUS = {
     "caster": True,
     "ref": True,
@@ -39,8 +35,13 @@ intents.messages = True
 intents.dm_messages = True
 intents.guilds = True
 intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# In-memory tracking of panel message IDs per guild so we can edit them later
+# Format: {guild_id: [message_id, ...]}
+PANEL_MESSAGES = {}
 
 # ---------- /register UI ----------
 class RegisterSelect(View):
@@ -61,12 +62,10 @@ class RegisterTypeSelect(Select):
 
     async def callback(self, interaction: discord.Interaction):
         app_type = self.values[0]
-        # Block team apps for anyone with the staff role
         if app_type == "team" and isinstance(interaction.user, discord.Member):
             if any(r.id == STAFF_ROLE_ID for r in interaction.user.roles):
                 await interaction.response.send_message("You already have a staff role and cannot apply for a team.", ephemeral=True)
                 return
-        # check open/closed
         if not APP_STATUS.get(app_type, True):
             await interaction.response.send_message("This App has been closed by a admin", ephemeral=True)
             return
@@ -75,7 +74,6 @@ class RegisterTypeSelect(Select):
 
 # ---------- Application flow ----------
 async def start_application_flow(user: discord.User, app_type: str, interaction: discord.Interaction):
-    # DM intro
     try:
         dm = await user.create_dm()
         await dm.send("Application Started\nPlease answer the questions below, either by selecting menu options or by sending messages to the bot.")
@@ -128,7 +126,6 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
     answers = {}
 
-    # Questions per app_type (required check after each)
     if app_type == "caster":
         answers["1"] = await collect_text("1/10. What is your Discord username & ID?"); 
         if answers["1"] is None: return
@@ -211,14 +208,12 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
     await dm.send("Application submitted.\nYour application has been submitted.")
 
-    # Build embed
     embed = discord.Embed(title=f"{user.display_name}'s {app_type.capitalize()} Application", description="Application Submitted", color=0x2F3136)
     embed.set_thumbnail(url=user.display_avatar.url if user.display_avatar else None)
     for qnum, ans in answers.items():
         embed.add_field(name=f"Q{qnum}", value=ans if len(ans) < 1024 else ans[:1021] + "...", inline=False)
     embed.set_footer(text=f"User ID: {user.id}")
 
-    # Staff decision view
     class StaffDecisionView(View):
         def __init__(self, target_user_id: int, app_type: str, answers_dict: dict):
             super().__init__(timeout=None)
@@ -234,14 +229,11 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                 return
 
             await interaction2.response.edit_message(content=f"Application accepted by {staff_member.display_name}.", embed=interaction2.message.embeds[0], view=None)
-
-            # DM applicant
             try:
                 applicant = await bot.fetch_user(self.target_user_id)
                 await applicant.send(f"Your application was accepted by {staff_member.display_name}.")
             except: pass
 
-            # give role if applicable
             try:
                 guild = interaction2.guild or (await bot.fetch_guild(GUILD_IDS) if isinstance(GUILD_IDS, int) else None)
                 if guild:
@@ -266,7 +258,6 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                             except: pass
             except: pass
 
-            # TEAM: send only the /create-team line to transactions channel, then delete it
             if self.app_type == "team":
                 try:
                     chan = bot.get_channel(TRANSACTIONS_CHANNEL_ID) or await bot.fetch_channel(TRANSACTIONS_CHANNEL_ID)
@@ -287,7 +278,6 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                     captain_mention = f"<@{self.target_user_id}>"
                     team_command = f'/create-team "{team_name}" {captain_mention} {color}'
 
-                    # send only the command line and delete it after sending
                     msg = await chan.send(team_command)
                     try:
                         await msg.delete()
@@ -309,7 +299,6 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             except:
                 pass
 
-    # send to review channel
     try:
         app_channel = bot.get_channel(APPLICATION_CHANNEL_ID) or await bot.fetch_channel(APPLICATION_CHANNEL_ID)
         view = StaffDecisionView(user.id, app_type, answers)
@@ -318,6 +307,81 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
     except Exception:
         await dm.send("Error: application channel not configured or bot lacks permission to post. Contact an admin.")
         return
+
+# ---------- Applications Panel ----------
+class ApplicationsPanelView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    async def _start_if_open(self, interaction: discord.Interaction, key: str, user_friendly: str):
+        if not APP_STATUS.get(key, True):
+            await interaction.response.send_message(f"{user_friendly} applications are currently closed.", ephemeral=True)
+            return
+        await interaction.response.send_message(f"Starting {user_friendly} application — check your DMs.", ephemeral=True)
+        await start_application_flow(interaction.user, key, interaction)
+
+    @discord.ui.button(custom_id="panel_ref", label="Referee Applications", style=discord.ButtonStyle.primary)
+    async def ref_button(self, interaction: discord.Interaction, button: Button):
+        await self._start_if_open(interaction, "ref", "Referee")
+
+    @discord.ui.button(custom_id="panel_commentator", label="Commentator Applications", style=discord.ButtonStyle.primary)
+    async def commentator_button(self, interaction: discord.Interaction, button: Button):
+        await self._start_if_open(interaction, "commentator", "Commentator")
+
+    @discord.ui.button(custom_id="panel_caster", label="Caster Applications", style=discord.ButtonStyle.primary)
+    async def caster_button(self, interaction: discord.Interaction, button: Button):
+        await self._start_if_open(interaction, "caster", "Caster")
+
+    @discord.ui.button(custom_id="panel_staff", label="Staff Applications", style=discord.ButtonStyle.primary)
+    async def staff_button(self, interaction: discord.Interaction, button: Button):
+        await self._start_if_open(interaction, "staff", "Staff")
+
+def build_panel_content():
+    def status_text(key):
+        return " (Closed)" if not APP_STATUS.get(key, True) else ""
+    content = (
+        "# 📝Applications 📝 #\n"
+        "Welcome to Monke Monke Monke League. We are currently looking for active refs, casters, commentators, and staff members. If you would like to be apart of are team please apply with are provide sources.\n\n"
+        f"● **Ref application**{status_text('ref')}\n"
+        f"● **Commentator application**{status_text('commentator')}\n"
+        f"● **Caster application**{status_text('caster')}\n"
+        f"● **Staff application**{status_text('staff')}\n\n"
+        "We really appreciate yall taking your time out of your day to apply and to try to be apart of are team. This means a lot to the MMM boards and staff for helping us through the scrims and server. We hope you enjoy your time here and thank you for applying.\n\n"
+        "Your fellow\nBoards of MMM"
+    )
+    return content
+
+# /panel command
+@bot.tree.command(name="panel", description="Post the applications panel (admins only)", guild=discord.Object(id=GUILD_IDS) if isinstance(GUILD_IDS, int) else None)
+@app_commands.describe(channel="Channel to post the applications panel in")
+async def panel_command(interaction: discord.Interaction, channel: TextChannel):
+    member = interaction.user
+    if not isinstance(member, discord.Member) or not member.guild_permissions.administrator:
+        await interaction.response.send_message("You must be an administrator to use this command.", ephemeral=True)
+        return
+
+    content = build_panel_content()
+    view = ApplicationsPanelView()
+    # set disabled state of buttons according to APP_STATUS
+    for child in view.children:
+        if child.custom_id == "panel_ref":
+            child.disabled = not APP_STATUS.get("ref", True)
+        elif child.custom_id == "panel_commentator":
+            child.disabled = not APP_STATUS.get("commentator", True)
+        elif child.custom_id == "panel_caster":
+            child.disabled = not APP_STATUS.get("caster", True)
+        elif child.custom_id == "panel_staff":
+            child.disabled = not APP_STATUS.get("staff", True)
+
+    try:
+        msg = await channel.send(content)
+        msg2 = await channel.send("Select an application below:", view=view)
+        guild_id = interaction.guild.id if interaction.guild else None
+        if guild_id:
+            PANEL_MESSAGES.setdefault(guild_id, []).append(msg2.id)
+        await interaction.response.send_message(f"Panel posted in {channel.mention}.", ephemeral=True)
+    except Exception:
+        await interaction.response.send_message("Failed to post panel. Make sure I have permission to send messages in that channel.", ephemeral=True)
 
 # ---------- on_ready & slash registration ----------
 @bot.event
@@ -329,6 +393,27 @@ async def on_ready():
 
         @tree.command(name="register", description="Start an application (Caster / Ref / Commentator / Staff / Team)", guild=guild_obj)
         async def register_command(interaction: discord.Interaction):
+            # If a panel was posted in this guild, point users to it instead of opening a new flow
+            guild_id = interaction.guild.id if interaction.guild else None
+            if guild_id and PANEL_MESSAGES.get(guild_id):
+                # find one channel id where we posted a panel (we stored message IDs; get channel by fetching the first message)
+                channel_id = None
+                for mid in PANEL_MESSAGES.get(guild_id, []):
+                    try:
+                        msg = await interaction.guild.fetch_message(mid)
+                        if msg:
+                            channel_id = msg.channel.id
+                            break
+                    except Exception:
+                        continue
+                if channel_id:
+                    await interaction.response.send_message(
+                        f"A panel has already been made — please go apply here <#{channel_id}>",
+                        ephemeral=True
+                    )
+                    return
+                # fallback: if we couldn't find a tracked message, allow registering normally
+
             view = RegisterSelect()
             await interaction.response.send_message("Select application type:", view=view, ephemeral=True)
 
@@ -358,6 +443,74 @@ async def on_ready():
                 APP_STATUS[app_key] = True
                 await interaction.response.send_message(f"{app_key.capitalize()} application opened.", ephemeral=True)
 
+            # Update any posted panels for this guild (edit messages we previously posted)
+            guild_id = interaction.guild.id if interaction.guild else None
+            if not guild_id:
+                return
+
+            message_ids = PANEL_MESSAGES.get(guild_id, [])
+            if not message_ids:
+                return
+
+            # rebuild content and view state
+            content = build_panel_content()
+            view = ApplicationsPanelView()
+            for child in view.children:
+                if child.custom_id == "panel_ref":
+                    child.disabled = not APP_STATUS.get("ref", True)
+                elif child.custom_id == "panel_commentator":
+                    child.disabled = not APP_STATUS.get("commentator", True)
+                elif child.custom_id == "panel_caster":
+                    child.disabled = not APP_STATUS.get("caster", True)
+                elif child.custom_id == "panel_staff":
+                    child.disabled = not APP_STATUS.get("staff", True)
+
+            for mid in list(message_ids):  # iterate on copy in case we remove invalid IDs
+                try:
+                    # try to fetch the message from any channel the bot can access in this guild
+                    # we don't store channel id, so try channels from guild to find the message
+                    found = None
+                    guild = interaction.guild
+                    for channel in guild.text_channels:
+                        try:
+                            msg = await channel.fetch_message(mid)
+                            found = msg
+                            break
+                        except discord.NotFound:
+                            continue
+                        except discord.Forbidden:
+                            continue
+                        except Exception:
+                            continue
+                    if not found:
+                        # message not found — remove from tracking
+                        message_ids.remove(mid)
+                        continue
+
+                    # If this is the "panel header" message (we posted as two messages: header and "select an application below" with view),
+                    # we only need to edit the header content and the message with the view (found) — try to edit both if possible.
+                    # Edit header if it's the header content
+                    try:
+                        await found.edit(content="Select an application below:", view=view)
+                    except Exception:
+                        # maybe this was the header message without view — try editing content only
+                        try:
+                            await found.edit(content=content)
+                        except Exception:
+                            pass
+                except Exception:
+                    # if fetch failed completely, remove id
+                    try:
+                        message_ids.remove(mid)
+                    except ValueError:
+                        pass
+
+            # update stored list
+            if message_ids:
+                PANEL_MESSAGES[guild_id] = message_ids
+            else:
+                PANEL_MESSAGES.pop(guild_id, None)
+
         if guild_obj:
             await tree.sync(guild=guild_obj)
         else:
@@ -366,4 +519,5 @@ async def on_ready():
     except Exception as e:
         print("Failed to register command:", e)
 
+# Start the bot
 bot.run(os.getenv("BOT_TOKEN"))
