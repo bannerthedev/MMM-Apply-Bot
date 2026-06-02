@@ -426,131 +426,127 @@ async def on_ready():
         tree = bot.tree
         guild_obj = discord.Object(id=GUILD_IDS) if isinstance(GUILD_IDS, int) else None
 
-    # /register
-    @tree.command(name="register", description="Start an application (Caster / Ref / Commentator / Staff / Team)", guild=guild_obj)
-    async def register_command(interaction: discord.Interaction):
-        # If a panel exists in this guild, point users to it instead of opening a new flow
-        guild_id = interaction.guild.id if interaction.guild else None
-        if guild_id and PANEL_MESSAGES.get(guild_id):
-            # use first stored (channel_id, message_id)
-            ch_id, msg_id = PANEL_MESSAGES[guild_id][0]
-            try:
-                ch = interaction.guild.get_channel(ch_id) or await interaction.guild.fetch_channel(ch_id)
-                await ch.fetch_message(msg_id)  # confirm exists
-                await interaction.response.send_message(f"A panel has already been made — please go apply here <#{ch_id}>", ephemeral=True)
-                return
-            except Exception:
-                # remove invalid entry and fall through
-                PANEL_MESSAGES[guild_id].pop(0)
-                if not PANEL_MESSAGES[guild_id]:
-                    PANEL_MESSAGES.pop(guild_id, None)
-
-        view = RegisterSelect()
-        await interaction.response.send_message("Select application type:", view=view, ephemeral=True)
-
-    # /manage
-    @tree.command(name="manage", description="Open or close an application type", guild=guild_obj)
-    @app_commands.describe(action="open or close", app="application type to manage")
-    @app_commands.choices(action=[
-        app_commands.Choice(name="open", value="open"),
-        app_commands.Choice(name="close", value="close"),
-    ], app=[
-        app_commands.Choice(name="caster", value="caster"),
-        app_commands.Choice(name="ref", value="ref"),
-        app_commands.Choice(name="commentator", value="commentator"),
-        app_commands.Choice(name="staff", value="staff"),
-        app_commands.Choice(name="team", value="team"),
-    ])
-    async def manage_command(interaction: discord.Interaction, action: app_commands.Choice[str], app: app_commands.Choice[str]):
-        member = interaction.user
-        if not isinstance(member, discord.Member) or not member.guild_permissions.administrator:
-            await interaction.response.send_message("You must be an administrator to use this command.", ephemeral=True)
-            return
-
-        app_key = app.value
-        if action.value == "close":
-            APP_STATUS[app_key] = False
-            await interaction.response.send_message(f"{app_key.capitalize()} application closed.\n\nThis app has been closed by an admin", ephemeral=True)
-        else:
-            APP_STATUS[app_key] = True
-            await interaction.response.send_message(f"{app_key.capitalize()} application opened.", ephemeral=True)
-
-        # Update any posted panel messages for this guild (edit messages we previously posted)
-        guild_id = interaction.guild.id if interaction.guild else None
-        if not guild_id:
-            return
-
-        entries = PANEL_MESSAGES.get(guild_id, [])
-        if not entries:
-            return
-
-        content = build_panel_content()
-        view = ApplicationsPanelView()
-        # set disabled state for buttons
-        for child in view.children:
-            cid = getattr(child, "custom_id", None)
-            if cid == "panel_ref":
-                child.disabled = not APP_STATUS.get("ref", True)
-            elif cid == "panel_commentator":
-                child.disabled = not APP_STATUS.get("commentator", True)
-            elif cid == "panel_caster":
-                child.disabled = not APP_STATUS.get("caster", True)
-            elif cid == "panel_staff":
-                child.disabled = not APP_STATUS.get("staff", True)
-
-        valid_entries = []
-        for ch_id, msg_id in list(entries):
-            try:
-                ch = interaction.guild.get_channel(ch_id) or await interaction.guild.fetch_channel(ch_id)
-                msg = await ch.fetch_message(msg_id)
-                await msg.edit(content=content, view=view)
-                valid_entries.append((ch_id, msg_id))
-            except Exception:
-                continue
-
-        if valid_entries:
-            PANEL_MESSAGES[guild_id] = valid_entries
-        else:
-            PANEL_MESSAGES.pop(guild_id, None)
-
-    # /panel - single message containing content + buttons
-    @tree.command(name="panel", description="Post the applications panel (admins only)", guild=guild_obj)
-    @app_commands.describe(channel="Channel to post the applications panel in")
-    async def panel_command(interaction: discord.Interaction, channel: TextChannel):
-        member = interaction.user
-        if not isinstance(member, discord.Member) or not member.guild_permissions.administrator:
-            await interaction.response.send_message("You must be an administrator to use this command.", ephemeral=True)
-            return
-
-        content = build_panel_content()
-        view = ApplicationsPanelView()
-        # set disabled state for buttons
-        for child in view.children:
-            cid = getattr(child, "custom_id", None)
-            if cid == "panel_ref":
-                child.disabled = not APP_STATUS.get("ref", True)
-            elif cid == "panel_commentator":
-                child.disabled = not APP_STATUS.get("commentator", True)
-            elif cid == "panel_caster":
-                child.disabled = not APP_STATUS.get("caster", True)
-            elif cid == "panel_staff":
-                child.disabled = not APP_STATUS.get("staff", True)
-
-        try:
-            msg = await channel.send(content, view=view)
+        # /register
+        @tree.command(name="register", description="Start an application (Caster / Ref / Commentator / Staff / Team)", guild=guild_obj)
+        async def register_command(interaction: discord.Interaction):
             guild_id = interaction.guild.id if interaction.guild else None
-            if guild_id:
-                PANEL_MESSAGES.setdefault(guild_id, []).append((channel.id, msg.id))
-            await interaction.response.send_message(f"Panel posted in {channel.mention}.", ephemeral=True)
-        except Exception:
-            await interaction.response.send_message("Failed to post panel. Make sure I have permission to send messages and manage messages in that channel.", ephemeral=True)
+            if guild_id and PANEL_MESSAGES.get(guild_id):
+                ch_id, msg_id = PANEL_MESSAGES[guild_id][0]
+                try:
+                    ch = interaction.guild.get_channel(ch_id) or await interaction.guild.fetch_channel(ch_id)
+                    await ch.fetch_message(msg_id)
+                    await interaction.response.send_message(f"A panel has already been made — please go apply here <#{ch_id}>", ephemeral=True)
+                    return
+                except Exception:
+                    PANEL_MESSAGES[guild_id].pop(0)
+                    if not PANEL_MESSAGES[guild_id]:
+                        PANEL_MESSAGES.pop(guild_id, None)
 
-    if guild_obj:
-        await tree.sync(guild=guild_obj)
-    else:
-        await tree.sync()
-    print("Slash commands registered.")
-except Exception as e:
-    print("Failed to register command:", e)
+            view = RegisterSelect()
+            await interaction.response.send_message("Select application type:", view=view, ephemeral=True)
 
+        # /manage
+        @tree.command(name="manage", description="Open or close an application type", guild=guild_obj)
+        @app_commands.describe(action="open or close", app="application type to manage")
+        @app_commands.choices(action=[
+            app_commands.Choice(name="open", value="open"),
+            app_commands.Choice(name="close", value="close"),
+        ], app=[
+            app_commands.Choice(name="caster", value="caster"),
+            app_commands.Choice(name="ref", value="ref"),
+            app_commands.Choice(name="commentator", value="commentator"),
+            app_commands.Choice(name="staff", value="staff"),
+            app_commands.Choice(name="team", value="team"),
+        ])
+        async def manage_command(interaction: discord.Interaction, action: app_commands.Choice[str], app: app_commands.Choice[str]):
+            member = interaction.user
+            if not isinstance(member, discord.Member) or not member.guild_permissions.administrator:
+                await interaction.response.send_message("You must be an administrator to use this command.", ephemeral=True)
+                return
+
+            app_key = app.value
+            if action.value == "close":
+                APP_STATUS[app_key] = False
+                await interaction.response.send_message(f"{app_key.capitalize()} application closed.\n\nThis app has been closed by an admin", ephemeral=True)
+            else:
+                APP_STATUS[app_key] = True
+                await interaction.response.send_message(f"{app_key.capitalize()} application opened.", ephemeral=True)
+
+            guild_id = interaction.guild.id if interaction.guild else None
+            if not guild_id:
+                return
+
+            entries = PANEL_MESSAGES.get(guild_id, [])
+            if not entries:
+                return
+
+            content = build_panel_content()
+            view = ApplicationsPanelView()
+            for child in view.children:
+                cid = getattr(child, "custom_id", None)
+                if cid == "panel_ref":
+                    child.disabled = not APP_STATUS.get("ref", True)
+                elif cid == "panel_commentator":
+                    child.disabled = not APP_STATUS.get("commentator", True)
+                elif cid == "panel_caster":
+                    child.disabled = not APP_STATUS.get("caster", True)
+                elif cid == "panel_staff":
+                    child.disabled = not APP_STATUS.get("staff", True)
+
+            valid_entries = []
+            for ch_id, msg_id in list(entries):
+                try:
+                    ch = interaction.guild.get_channel(ch_id) or await interaction.guild.fetch_channel(ch_id)
+                    msg = await ch.fetch_message(msg_id)
+                    await msg.edit(content=content, view=view)
+                    valid_entries.append((ch_id, msg_id))
+                except Exception:
+                    continue
+
+            if valid_entries:
+                PANEL_MESSAGES[guild_id] = valid_entries
+            else:
+                PANEL_MESSAGES.pop(guild_id, None)
+
+        # /panel - single message containing content + buttons
+        @tree.command(name="panel", description="Post the applications panel (admins only)", guild=guild_obj)
+        @app_commands.describe(channel="Channel to post the applications panel in")
+        async def panel_command(interaction: discord.Interaction, channel: TextChannel):
+            member = interaction.user
+            if not isinstance(member, discord.Member) or not member.guild_permissions.administrator:
+                await interaction.response.send_message("You must be an administrator to use this command.", ephemeral=True)
+                return
+
+            content = build_panel_content()
+            view = ApplicationsPanelView()
+            for child in view.children:
+                cid = getattr(child, "custom_id", None)
+                if cid == "panel_ref":
+                    child.disabled = not APP_STATUS.get("ref", True)
+                elif cid == "panel_commentator":
+                    child.disabled = not APP_STATUS.get("commentator", True)
+                elif cid == "panel_caster":
+                    child.disabled = not APP_STATUS.get("caster", True)
+                elif cid == "panel_staff":
+                    child.disabled = not APP_STATUS.get("staff", True)
+
+            try:
+                msg = await channel.send(content, view=view)
+                guild_id = interaction.guild.id if interaction.guild else None
+                if guild_id:
+                    PANEL_MESSAGES.setdefault(guild_id, []).append((channel.id, msg.id))
+                await interaction.response.send_message(f"Panel posted in {channel.mention}.", ephemeral=True)
+            except Exception:
+                await interaction.response.send_message("Failed to post panel. Make sure I have permission to send messages and manage messages in that channel.", ephemeral=True)
+
+        if guild_obj:
+            await tree.sync(guild=guild_obj)
+        else:
+            await tree.sync()
+        print("Slash commands registered.")
+    except Exception as e:
+        print("Failed to register command:", e)
+
+# Start the bot
 bot.run(os.getenv("BOT_TOKEN"))
+
