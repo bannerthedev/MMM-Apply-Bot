@@ -150,7 +150,9 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             if button_interaction.user.id != user.id:
                 await button_interaction.response.send_message("This is not for you.", ephemeral=True)
                 return
+
             self.choice = "accept"
+
             # Send a new green embed for "Application Started"
             await button_interaction.response.send_message(
                 embed=green_embed(
@@ -162,6 +164,13 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                 ),
                 ephemeral=False
             )
+
+            # Delete the first (intro) message with the buttons
+            try:
+                await button_interaction.message.delete()
+            except:
+                pass
+
             self.stop()
 
         @discord.ui.button(label="Cancel Application", style=discord.ButtonStyle.primary, custom_id="intro_cancel")
@@ -169,7 +178,9 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             if button_interaction.user.id != user.id:
                 await button_interaction.response.send_message("This is not for you.", ephemeral=True)
                 return
+
             self.choice = "deny"
+
             await button_interaction.response.send_message(
                 embed=green_embed(
                     title="Application Cancelled",
@@ -177,6 +188,13 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                 ),
                 ephemeral=False
             )
+
+            # Delete the first (intro) message with the buttons
+            try:
+                await button_interaction.message.delete()
+            except:
+                pass
+
             self.stop()
 
     intro_view = IntroView()
