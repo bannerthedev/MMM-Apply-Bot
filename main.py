@@ -29,6 +29,55 @@ APP_STATUS = {
 }
 # ======================================
 
+# QUESTION TEXTS USED FOR EMBED TITLES
+QUESTION_TEXTS = {
+    "caster": {
+        "1": "What is your Discord username & ID?",
+        "2": "Do you have a mic?",
+        "3": "Do you have any past experience with casting in Gorilla Tag? If so please explain.",
+        "4": "Why do you want to become a Caster for MMM?",
+        "5": "What is your Upload & Download Speed? (use https://www.speedtest.net/)",
+        "6": "List your PC specifications.",
+        "7": "If you have past casting experience, link your YouTube/Twitch/etc.",
+        "8": "Are you familiar with OBS?",
+        "9": "Please send a video showing OBS tasks (make Game Capture, add mic, import/export profile, make scene). Upload via Drive/MediaFire and send link.",
+        "10": "Any questions?",
+    },
+    "ref": {
+        "1": "What is your Discord username & ID?",
+        "2": "Name 3 official scrims you have reffed for (include teams and score).",
+        "3": "What is the recommended minimum time a ref should give late players?",
+        "4": "How long do runners have before taggers can pursue them?",
+        "5": "Where do runners go when tagged by the opposing team?",
+        "6": "What headsets are allowed in MMM official scrims?",
+        "7": "Can teams have different colors than their teammates? If not, why?",
+        "8": "Do players have team abbreviation in their name while playing? If not, why?",
+        "9": "Do you understand that if you don't ref at least 3-5 matches per season you may be removed/demoted?",
+        "10": "Do you understand that if you are caught being bias you WILL be removed?",
+        "11": "Do you understand you must follow your Head Referees instructions at all times?",
+    },
+    "commentator": {
+        "1": "What is your Discord username?",
+        "2": "Do you know in-game callouts and how the league rules work?",
+        "3": "Do you have experience commentating? If so list the discords you have been a commentator for.",
+        "4": "Why should you be commentator? Please give a thorough reasoning on why.",
+        "5": "If you use a PC to call on discord what microphone do you use?",
+    },
+    "staff": {
+        "1": "What Is Your Username And ID.",
+        "2": "What Is Your Age.",
+        "3": "Do you have experience being a moderator for a league? If yes, please list the league and when you served.",
+        "4": "Why Should We Accept You.",
+    },
+    "team": {
+        "1": "Team name and abbreviation",
+        "2": "Hex color code",
+        "3": "Roster",
+        "4": "Server (if private do not type)",
+        "5": "If you are accepted you need to make a ticket and send your pfp. Do you understand?",
+    },
+}
+
 intents = discord.Intents.default()
 intents.messages = True
 intents.dm_messages = True
@@ -80,7 +129,8 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
     except Exception:
         try:
             await interaction.followup.send("I couldn't DM you. Please enable DMs from server members and try again.", ephemeral=True)
-        except: pass
+        except:
+            pass
         return
 
     class IntroView(View):
@@ -115,14 +165,16 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
     except Exception:
         try:
             await interaction.followup.send("I couldn't send the intro DM. Please enable DMs from server members and try again.", ephemeral=True)
-        except: pass
+        except:
+            pass
         return
 
     await intro_view.wait()
     if intro_view.choice is None:
         try:
             await dm.send("Timed out. Please re-run apply to start again.")
-        except: pass
+        except:
+            pass
         return
     if intro_view.choice == "deny":
         return
@@ -166,7 +218,8 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         if view.value is None:
             try:
                 await msg.edit(content="Timed out. Please re-run apply to start again.", view=None)
-            except: pass
+            except:
+                pass
             return None
         return view.value
 
@@ -174,71 +227,71 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
     # Questions per app_type
     if app_type == "caster":
-        answers["1"] = await collect_text("1/10. What is your Discord username & ID?"); 
+        answers["1"] = await collect_text("1/10. What is your Discord username & ID?")
         if answers["1"] is None: return
-        answers["2"] = await ask_yes_no("2/10. Do you have a mic?"); 
+        answers["2"] = await ask_yes_no("2/10. Do you have a mic?")
         if answers["2"] is None: return
-        answers["3"] = await collect_text("3/10. Do you have any past experience with casting in Gorilla Tag? If so please explain."); 
+        answers["3"] = await collect_text("3/10. Do you have any past experience with casting in Gorilla Tag? If so please explain.")
         if answers["3"] is None: return
-        answers["4"] = await collect_text("4/10. Why do you want to become a Caster for MMM?"); 
+        answers["4"] = await collect_text("4/10. Why do you want to become a Caster for MMM?")
         if answers["4"] is None: return
-        answers["5"] = await collect_text("5/10. What is your Upload & Download Speed? (use https://www.speedtest.net/)"); 
+        answers["5"] = await collect_text("5/10. What is your Upload & Download Speed? (use https://www.speedtest.net/)")
         if answers["5"] is None: return
-        answers["6"] = await collect_text("6/10. List your PC specifications."); 
+        answers["6"] = await collect_text("6/10. List your PC specifications.")
         if answers["6"] is None: return
-        answers["7"] = await collect_text("7/10. If you have past casting experience, link your YouTube/Twitch/etc."); 
+        answers["7"] = await collect_text("7/10. If you have past casting experience, link your YouTube/Twitch/etc.")
         if answers["7"] is None: return
-        answers["8"] = await collect_text("8/10. Are you familiar with OBS?"); 
+        answers["8"] = await collect_text("8/10. Are you familiar with OBS?")
         if answers["8"] is None: return
-        answers["9"] = await collect_text("9/10. Please send a video showing OBS tasks (make Game Capture, add mic, import/export profile, make scene). Upload via Drive/MediaFire and send link."); 
+        answers["9"] = await collect_text("9/10. Please send a video showing OBS tasks (make Game Capture, add mic, import/export profile, make scene). Upload via Drive/MediaFire and send link.")
         if answers["9"] is None: return
-        answers["10"] = await collect_text("10/10. Any questions?"); 
+        answers["10"] = await collect_text("10/10. Any questions?")
         if answers["10"] is None: return
 
     elif app_type == "ref":
-        answers["1"] = await collect_text("1/11. What is your Discord username & ID?"); 
+        answers["1"] = await collect_text("1/11. What is your Discord username & ID?")
         if answers["1"] is None: return
-        answers["2"] = await collect_text("2/11. Name 3 official scrims you have reffed for (include teams and score)."); 
+        answers["2"] = await collect_text("2/11. Name 3 official scrims you have reffed for (include teams and score).")
         if answers["2"] is None: return
-        answers["3"] = await collect_text("3/11. What is the recommended minimum time a ref should give late players?"); 
+        answers["3"] = await collect_text("3/11. What is the recommended minimum time a ref should give late players?")
         if answers["3"] is None: return
-        answers["4"] = await collect_text("4/11. How long do runners have before taggers can pursue them?"); 
+        answers["4"] = await collect_text("4/11. How long do runners have before taggers can pursue them?")
         if answers["4"] is None: return
-        answers["5"] = await collect_text("5/11. Where do runners go when tagged by the opposing team?"); 
+        answers["5"] = await collect_text("5/11. Where do runners go when tagged by the opposing team?")
         if answers["5"] is None: return
-        answers["6"] = await collect_text("6/11. What headsets are allowed in MMM official scrims?"); 
+        answers["6"] = await collect_text("6/11. What headsets are allowed in MMM official scrims?")
         if answers["6"] is None: return
-        answers["7"] = await collect_text("7/11. Can teams have different colors than there teammates? If not, why?"); 
+        answers["7"] = await collect_text("7/11. Can teams have different colors than there teammates? If not, why?")
         if answers["7"] is None: return
-        answers["8"] = await collect_text("8/11. Do players have team abbreviation in their name while playing? If not, why?"); 
+        answers["8"] = await collect_text("8/11. Do players have team abbreviation in their name while playing? If not, why?")
         if answers["8"] is None: return
-        answers["9"] = await ask_yes_no("9/11. Do you understand that if you don't ref at least 3-5 matches per season you may be removed/demoted?"); 
+        answers["9"] = await ask_yes_no("9/11. Do you understand that if you don't ref at least 3-5 matches per season you may be removed/demoted?")
         if answers["9"] is None: return
-        answers["10"] = await ask_yes_no("10/11. Do you understand that if you are caught being bias you WILL be removed?"); 
+        answers["10"] = await ask_yes_no("10/11. Do you understand that if you are caught being bias you WILL be removed?")
         if answers["10"] is None: return
-        answers["11"] = await ask_yes_no("11/11. Do you understand you must follow your Head Referees instructions at all times?"); 
+        answers["11"] = await ask_yes_no("11/11. Do you understand you must follow your Head Referees instructions at all times?")
         if answers["11"] is None: return
 
     elif app_type == "commentator":
-        answers["1"] = await collect_text("1/5. What is your Discord username?"); 
+        answers["1"] = await collect_text("1/5. What is your Discord username?")
         if answers["1"] is None: return
-        answers["2"] = await collect_text("2/5. Do you know in-game callouts and how the league rules work?"); 
+        answers["2"] = await collect_text("2/5. Do you know in-game callouts and how the league rules work?")
         if answers["2"] is None: return
-        answers["3"] = await collect_text("3/5. Do you have experience commentating? If so list the discords you have been a commentator for."); 
+        answers["3"] = await collect_text("3/5. Do you have experience commentating? If so list the discords you have been a commentator for.")
         if answers["3"] is None: return
-        answers["4"] = await collect_text("4/5. Why should you be commentator? Please give a thorough reasoning on why."); 
+        answers["4"] = await collect_text("4/5. Why should you be commentator? Please give a thorough reasoning on why.")
         if answers["4"] is None: return
-        answers["5"] = await collect_text("5/5. If you use a PC to call on discord what microphone do you use?"); 
+        answers["5"] = await collect_text("5/5. If you use a PC to call on discord what microphone do you use?")
         if answers["5"] is None: return
 
     elif app_type == "staff":
-        answers["1"] = await collect_text("1/4. What Is Your Username And ID."); 
+        answers["1"] = await collect_text("1/4. What Is Your Username And ID.")
         if answers["1"] is None: return
-        answers["2"] = await collect_text("2/4. What Is Your Age."); 
+        answers["2"] = await collect_text("2/4. What Is Your Age.")
         if answers["2"] is None: return
-        answers["3"] = await collect_text("3/4. Do you have experience being a moderator for a league? If yes, please list the league and when you served."); 
+        answers["3"] = await collect_text("3/4. Do you have experience being a moderator for a league? If yes, please list the league and when you served.")
         if answers["3"] is None: return
-        answers["4"] = await collect_text("4/4. Why Should We Accept You."); 
+        answers["4"] = await collect_text("4/4. Why Should We Accept You.")
         if answers["4"] is None: return
 
     elif app_type == "team":
@@ -255,13 +308,28 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
     await dm.send("Application submitted.\nYour application has been submitted.")
 
-    # Build embed
-    embed = discord.Embed(title=f"{user.display_name}'s {app_type.capitalize()} Application", description="Application Submitted", color=0x2F3136)
+    # Build embed (GREEN)
+    embed = discord.Embed(
+        title=f"{user.display_name}'s {app_type.capitalize()} Application",
+        description="Application Submitted",
+        color=0x57F287  # green bar
+    )
     try:
         embed.set_thumbnail(url=user.display_avatar.url)
-    except: pass
+    except:
+        pass
+
+    # Use full question text in field names
+    qtext_map = QUESTION_TEXTS.get(app_type, {})
     for qnum, ans in answers.items():
-        embed.add_field(name=f"Q{qnum}", value=ans if len(ans) < 1024 else ans[:1021] + "...", inline=False)
+        question_text = qtext_map.get(qnum, f"Question {qnum}")
+        field_name = f"Q{qnum}: {question_text}"
+        embed.add_field(
+            name=field_name,
+            value=ans if len(ans) < 1024 else ans[:1021] + "...",
+            inline=False
+        )
+
     embed.set_footer(text=f"User ID: {user.id}")
 
     # Staff decision view (anonymized public messages)
@@ -285,13 +353,15 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             except:
                 try:
                     await interaction2.message.edit(content="Application accepted.", view=None)
-                except: pass
+                except:
+                    pass
 
             # DM applicant (anonymous)
             try:
                 applicant = await bot.fetch_user(self.target_user_id)
                 await applicant.send("Your application was accepted.")
-            except: pass
+            except:
+                pass
 
             # give role if applicable
             try:
@@ -315,8 +385,10 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
                                 await member.add_roles(role, reason="Application accepted")
                             except discord.NotFound:
                                 pass
-                            except: pass
-            except: pass
+                            except:
+                                pass
+            except:
+                pass
 
             # TEAM: send /create-team line then delete
             if self.app_type == "team":
@@ -357,7 +429,8 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             except:
                 try:
                     await interaction2.message.edit(content="Application denied.", view=None)
-                except: pass
+                except:
+                    pass
 
             # DM applicant (anonymous)
             try:
@@ -387,19 +460,19 @@ class ApplicationsPanelView(View):
         await interaction.response.send_message(f"Starting {user_friendly} application — check your DMs.", ephemeral=True)
         await start_application_flow(interaction.user, key, interaction)
 
-    @discord.ui.button(custom_id="panel_ref", label="Referee Applications", style=discord.ButtonStyle.primary)
+    @discord.ui.button(custom_id="panel_ref", label="Referee Applications", style=discord.ButtonStyle.success)
     async def ref_button(self, interaction: discord.Interaction, button: Button):
         await self._start_if_open(interaction, "ref", "Referee")
 
-    @discord.ui.button(custom_id="panel_commentator", label="Commentator Applications", style=discord.ButtonStyle.primary)
+    @discord.ui.button(custom_id="panel_commentator", label="Commentator Applications", style=discord.ButtonStyle.success)
     async def commentator_button(self, interaction: discord.Interaction, button: Button):
         await self._start_if_open(interaction, "commentator", "Commentator")
 
-    @discord.ui.button(custom_id="panel_caster", label="Caster Applications", style=discord.ButtonStyle.primary)
+    @discord.ui.button(custom_id="panel_caster", label="Caster Applications", style=discord.ButtonStyle.success)
     async def caster_button(self, interaction: discord.Interaction, button: Button):
         await self._start_if_open(interaction, "caster", "Caster")
 
-    @discord.ui.button(custom_id="panel_staff", label="Staff Applications", style=discord.ButtonStyle.primary)
+    @discord.ui.button(custom_id="panel_staff", label="Staff Applications", style=discord.ButtonStyle.success)
     async def staff_button(self, interaction: discord.Interaction, button: Button):
         await self._start_if_open(interaction, "staff", "Staff")
 
@@ -549,4 +622,3 @@ async def on_ready():
 
 # Start the bot
 bot.run(os.getenv("BOT_TOKEN"))
-
