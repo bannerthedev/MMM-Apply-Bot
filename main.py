@@ -29,6 +29,13 @@ APP_STATUS = {
 }
 # ======================================
 
+# Colors and helpers
+GREEN = 0x57F287  # Discord success green
+BLURPLE = 0x5865F2  # Discord blurple
+
+def green_embed(title: str = None, description: str = None):
+    return discord.Embed(title=title, description=description, color=GREEN)
+
 # QUESTION TEXTS USED FOR EMBED TITLES
 QUESTION_TEXTS = {
     "caster": {
@@ -121,7 +128,7 @@ class RegisterTypeSelect(Select):
         await interaction.response.send_message("Application Started — check your DMs.", ephemeral=True)
         await start_application_flow(interaction.user, app_type, interaction)
 
-# ---------- Application flow with intro Accept/Deny ----------
+# ---------- Application flow with intro ----------
 async def start_application_flow(user: discord.User, app_type: str, interaction: discord.Interaction):
     # DM intro
     try:
@@ -135,33 +142,61 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
     class IntroView(View):
         def __init__(self):
-            super().__init__(timeout=300)
+            super().__init__(timeout=10800)  # 3 hours
             self.choice = None
 
-        @discord.ui.button(label="Accept", style=discord.ButtonStyle.success, custom_id="intro_accept")
-        async def accept(self, button_interaction: discord.Interaction, button: Button):
+        @discord.ui.button(label="Start Application", style=discord.ButtonStyle.primary, custom_id="intro_start")
+        async def start_app(self, button_interaction: discord.Interaction, button: Button):
             if button_interaction.user.id != user.id:
                 await button_interaction.response.send_message("This is not for you.", ephemeral=True)
                 return
             self.choice = "accept"
-            await button_interaction.response.edit_message(content="You accepted. Starting application...", view=None)
+            # Send a new green embed for "Application Started"
+            await button_interaction.response.send_message(
+                embed=green_embed(
+                    title="Application Started",
+                    description=(
+                        "Please answer the questions below, either by clicking on the dropdown menus "
+                        "or sending a message to the bot."
+                    ),
+                ),
+                ephemeral=False
+            )
             self.stop()
 
-        @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger, custom_id="intro_deny")
-        async def deny(self, button_interaction: discord.Interaction, button: Button):
+        @discord.ui.button(label="Cancel Application", style=discord.ButtonStyle.primary, custom_id="intro_cancel")
+        async def cancel_app(self, button_interaction: discord.Interaction, button: Button):
             if button_interaction.user.id != user.id:
                 await button_interaction.response.send_message("This is not for you.", ephemeral=True)
                 return
             self.choice = "deny"
-            await button_interaction.response.edit_message(content="You declined the application. If you change your mind, re-run /register.", view=None)
+            await button_interaction.response.send_message(
+                embed=green_embed(
+                    title="Application Cancelled",
+                    description="You have cancelled the application. You can run /register again at any time."
+                ),
+                ephemeral=False
+            )
             self.stop()
 
     intro_view = IntroView()
+
+    # First intro embed
+    app_name = app_type.capitalize()
+    intro_embed = discord.Embed(
+        title=f"{app_name} Application",
+        description=(
+            f"Are you sure you want to apply?\n\n"
+            "Once you start the application I will send you a series of questions. "
+            "You will have **3 hours** to complete the application. If you do not complete the "
+            "application in time, you will have to restart.\n\n"
+            "If you wish to stop the application, feel free to click the **Cancel Application** button at any time."
+        ),
+        color=BLURPLE
+    )
+
     try:
-        await dm.send(
-            "Application Started\nPlease answer the questions below, either by selecting menu options or by sending messages to the bot.",
-            view=intro_view
-        )
+        await dm.send(embed=intro_embed, view=intro_view)
     except Exception:
         try:
             await interaction.followup.send("I couldn't send the intro DM. Please enable DMs from server members and try again.", ephemeral=True)
@@ -184,7 +219,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         def check(m: discord.Message):
             return m.author.id == user.id and isinstance(m.channel, discord.DMChannel)
         try:
-            msg = await bot.wait_for('message', timeout=300.0, check=check)
+            msg = await bot.wait_for('message', timeout=10800.0, check=check)  # 3 hours
         except asyncio.TimeoutError:
             await dm.send("Timed out. Please re-run apply to start again.")
             return None
@@ -197,7 +232,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
     async def ask_yes_no(question: str):
         class YesNoView(View):
             def __init__(self):
-                super().__init__(timeout=300)
+                super().__init__(timeout=10800)  # 3 hours
                 self.value = None
 
             @discord.ui.select(placeholder="Select Yes or No", min_values=1, max_values=1, options=[
@@ -306,13 +341,19 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         answers["5"] = await ask_yes_no("5/5. yk if you are accepted you need to make a ticket and send your pfp")
         if answers["5"] is None: return
 
-    await dm.send("Application submitted.\nYour application has been submitted.")
+    # Application submitted embed
+    await dm.send(
+        embed=green_embed(
+            title="Application Submitted",
+            description="Your application has been submitted."
+        )
+    )
 
-    # Build embed (GREEN)
+    # Build application embed (green bar)
     embed = discord.Embed(
         title=f"{user.display_name}'s {app_type.capitalize()} Application",
         description="Application Submitted",
-        color=0x57F287  # green bar
+        color=GREEN
     )
     try:
         embed.set_thumbnail(url=user.display_avatar.url)
@@ -332,6 +373,7 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
 
     embed.set_footer(text=f"User ID: {user.id}")
 
+    # Staff decision view (anonymized public messages)
     # Staff decision view (anonymized public messages)
     class StaffDecisionView(View):
         def __init__(self, target_user_id: int, app_type: str, answers_dict: dict):
@@ -359,7 +401,12 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             # DM applicant (anonymous)
             try:
                 applicant = await bot.fetch_user(self.target_user_id)
-                await applicant.send("Your application was accepted.")
+                await applicant.send(
+                    embed=green_embed(
+                        title="Application Result",
+                        description="Your application was accepted."
+                    )
+                )
             except:
                 pass
 
@@ -435,7 +482,12 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
             # DM applicant (anonymous)
             try:
                 u = await bot.fetch_user(self.target_user_id)
-                await u.send("Your application was denied.")
+                await u.send(
+                    embed=green_embed(
+                        title="Application Result",
+                        description="Your application was denied."
+                    )
+                )
             except:
                 pass
 
@@ -443,7 +495,12 @@ async def start_application_flow(user: discord.User, app_type: str, interaction:
         app_channel = bot.get_channel(APPLICATION_CHANNEL_ID) or await bot.fetch_channel(APPLICATION_CHANNEL_ID)
         view = StaffDecisionView(user.id, app_type, answers)
         await app_channel.send(embed=embed, view=view)
-        await dm.send("Your application has been sent to staff.")
+        await dm.send(
+            embed=green_embed(
+                title="Application Sent",
+                description="Your application has been sent to staff."
+            )
+        )
     except Exception:
         await dm.send("Error: application channel not configured or bot lacks permission to post. Contact an admin.")
         return
